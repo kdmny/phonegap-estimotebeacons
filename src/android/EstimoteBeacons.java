@@ -8,6 +8,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import android.content.Context;
 import android.util.Log;
+import android.os.RemoteException;
 import java.io.InputStream;
 import com.estimote.sdk.*;
 import java.util.List;
@@ -62,6 +63,12 @@ public class EstimoteBeacons extends CordovaPlugin
 		}
 		else if("stopRangingBeaconsInRegion".equals(action)) {
 			stopRangingBeaconsInRegion(args, callbackContext);
+		}
+		else if("startMonitoringForRegion".equals(action)) {
+			startMonitoringForRegion(args, callbackContext);
+		}
+		else if("stopMonitoringForRegion".equals(action)){
+			stopMonitoringForRegion(args, callbackContext);
 		}
 		else {
 			return false;
@@ -233,6 +240,100 @@ public class EstimoteBeacons extends CordovaPlugin
 		}
 	}
 
+   /**
+     * Starts monitoring beacons in region.
+     * @param callbackContext The callback id used when calling back into JavaScript
+     * @throws RemoteException
+     */
+    private void startMonitoringForRegion(
+    	CordovaArgs ca, 
+    	final CallbackContext callbackContext) 
+    	throws JSONException 
+    {
+		JSONObject args = ca.getJSONObject(0);
+        Log.d(EstimoteBeacons.class.toString(), "startMonitoringForRegion");
+		final Region region = new Region(
+			args.optString("identifier", ""),
+			args.optString("uuid", null),
+			optUInt16Null(args, "major"),
+			optUInt16Null(args, "minor"));
+        //mBeaconManager.setBackgroundScanPeriod(scanPeriod, waitPeriod);
+
+        mBeaconManager.setMonitoringListener(new BeaconManager.MonitoringListener() {
+            @Override
+            public void onExitedRegion(Region region) {
+                Log.d(EstimoteBeacons.class.toString(), "onExitedRegion");
+                //EstimoteBeacons.this.inRegion = 0;
+                
+                PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, 0);
+                pluginResult.setKeepCallback(true);
+                callbackContext.sendPluginResult(pluginResult);
+                /*
+                JSONArray json = EstimoteBeacons.this.beaconsListToJSONArray( beacons );
+                EstimoteBeacons.this._webView.sendJavascript("javascript:"+onExit+"("+json.toString()+")");
+                */
+            }
+
+            @Override
+            public void onEnteredRegion(Region region, List<Beacon> beacons) {
+                Log.d(EstimoteBeacons.class.toString(), "entered region");
+                //EstimoteBeacons.this.inRegion = 1;
+				Log.i(TAG, "onBeaconsDiscovered");
+
+				// Create JSON result object.
+				JSONObject o = new JSONObject();
+				try {
+					o.put("region", makeJSONRegion(region));
+					o.put("beacons", makeJSONBeacons(beacons));
+				} catch(Exception e) {
+					Log.e(TAG, "JSON", e);
+					throw new Error(e);
+				}
+
+				// Send result to JavaScript.
+				PluginResult r = new PluginResult(PluginResult.Status.OK, o);
+				r.setKeepCallback(true);
+				callbackContext.sendPluginResult(r);
+                
+            }
+
+        });
+        mBeaconManager.connect(new BeaconManager.ServiceReadyCallback() {
+            @Override
+            public void onServiceReady() {
+                try {
+                    mBeaconManager.startMonitoring(region);
+                } catch(RemoteException e) {
+                    Log.e("DEBUG", "Cannot start monitoring", e);
+                }
+            }
+        });
+    }
+
+    /**
+     * Stops monitoring beacons in region.
+     * @throws RemoteException
+     */
+    private void stopMonitoringForRegion(
+    	CordovaArgs ca,
+    	final CallbackContext callbackContext) 
+    	throws JSONException
+   	{
+    	JSONObject args = ca.getJSONObject(0);
+    	final Region region = new Region(
+			args.optString("identifier", ""),
+			args.optString("uuid", null),
+			optUInt16Null(args, "major"),
+			optUInt16Null(args, "minor"));
+    	try{
+			mBeaconManager.stopMonitoring(region);
+		} catch(RemoteException e){
+			Log.e("ERROR", "Error stopping monitoring region", e);
+		}
+    	PluginResult r = new PluginResult(PluginResult.Status.OK, 0);
+		r.setKeepCallback(true);
+		callbackContext.sendPluginResult(r);
+    }
 	/**
 	* Create JSON object representing a region.
 	*/
